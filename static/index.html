@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Attentiveness Analyzer – Live Dashboard</title>
+  <meta name="description" content="Real-time student attentiveness monitoring powered by an LSTM neural network and MediaPipe face mesh." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+<!-- ─── Top Navigation ────────────────────────────────────────────── -->
+<nav class="topbar">
+  <div class="topbar-brand">
+    <div class="brand-icon">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+        <circle cx="12" cy="12" r="3"/>
+      </svg>
+    </div>
+    <span class="brand-name">AttentionAI</span>
+    <span class="brand-tag">v2.0 LSTM</span>
+  </div>
+  <div class="topbar-center">
+    <div class="live-pill" id="livePill">
+      <span class="live-dot"></span>
+      <span id="livePillText">OFFLINE</span>
+    </div>
+  </div>
+  <div class="topbar-actions">
+    <button class="btn btn-outline" id="stopBtn" onclick="controlAnalyzer('stop')" disabled>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+      Stop
+    </button>
+    <button class="btn btn-primary" id="startBtn" onclick="controlAnalyzer('start')">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><polygon points="5,3 19,12 5,21"/></svg>
+      Start Session
+    </button>
+  </div>
+</nav>
+
+<!-- ─── Main Layout ───────────────────────────────────────────────── -->
+<main class="layout">
+
+  <!-- ── LEFT: Video Feed ─────────────────────────────────────────── -->
+  <section class="panel panel-video">
+    <div class="panel-header">
+      <h2 class="panel-title">Live Feed</h2>
+      <div class="cam-indicator" id="camIndicator">
+        <span class="cam-dot"></span>
+        <span id="camLabel">Camera Off</span>
+      </div>
+    </div>
+    <div class="video-wrapper" id="videoWrapper">
+      <div class="video-offline" id="videoOffline">
+        <div class="offline-icon">
+          <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
+            <circle cx="12" cy="13" r="4"/>
+          </svg>
+        </div>
+        <p class="offline-text">Camera stream not active</p>
+        <p class="offline-sub">Press <strong>Start Session</strong> above to begin</p>
+      </div>
+      <img src="" alt="Live camera feed" class="video-feed hidden" id="videoFeed" />
+    </div>
+    <!-- Session timer under video -->
+    <div class="session-bar">
+      <div class="session-stat" id="statTime">
+        <span class="stat-label">Session Time</span>
+        <span class="stat-value" id="sessionTime">00:00</span>
+      </div>
+      <div class="session-stat">
+        <span class="stat-label">Attentive</span>
+        <span class="stat-value accent-green" id="attentivePct">—</span>
+      </div>
+      <div class="session-stat">
+        <span class="stat-label">Alerts</span>
+        <span class="stat-value accent-red" id="alertCount">0</span>
+      </div>
+      <div class="session-stat">
+        <span class="stat-label">Frames</span>
+        <span class="stat-value" id="frameCount">—</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── CENTER: Status + Chart ───────────────────────────────────── -->
+  <section class="panel panel-center">
+
+    <!-- Big status card -->
+    <div class="status-card" id="statusCard">
+      <div class="status-ring-wrap">
+        <svg class="status-ring" viewBox="0 0 120 120">
+          <circle class="ring-bg"    cx="60" cy="60" r="50" />
+          <circle class="ring-fill"  cx="60" cy="60" r="50" id="ringFill" />
+        </svg>
+        <div class="status-center">
+          <div class="status-emoji" id="statusEmoji">😴</div>
+          <div class="status-label" id="statusLabel">OFFLINE</div>
+          <div class="conf-pct" id="confPct">— %</div>
+        </div>
+      </div>
+      <div class="status-detail">
+        <div class="detail-chip" id="chipGaze">
+          <span class="chip-icon">👁</span><span id="gazeDir">—</span>
+        </div>
+        <div class="detail-chip" id="chipBlink">
+          <span class="chip-icon">💤</span><span id="blinkStat">—</span>
+        </div>
+        <div class="detail-chip" id="chipYawn">
+          <span class="chip-icon">😮</span><span id="yawnStat">—</span>
+        </div>
+        <div class="detail-chip" id="chipMove">
+          <span class="chip-icon">🫱</span><span id="moveStat">—</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Inattentive timer bar -->
+    <div class="timer-track-wrap">
+      <div class="timer-track-labels">
+        <span>Alert Timer</span>
+        <span id="timerNums">0 / 45</span>
+      </div>
+      <div class="timer-track">
+        <div class="timer-fill" id="timerFill" style="width:0%"></div>
+      </div>
+    </div>
+
+    <!-- Attention chart -->
+    <div class="chart-card">
+      <div class="chart-header">
+        <h3 class="chart-title">Attention Over Time</h3>
+        <span class="chart-sub">Last 60 s</span>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="attentionChart"></canvas>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ── RIGHT: Metrics ───────────────────────────────────────────── -->
+  <section class="panel panel-metrics">
+    <div class="panel-header">
+      <h2 class="panel-title">Live Metrics</h2>
+    </div>
+
+    <!-- EAR -->
+    <div class="metric-card" id="mcEAR">
+      <div class="metric-top">
+        <div class="metric-icon mc-blue">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="3"/></svg>
+        </div>
+        <div class="metric-info">
+          <span class="metric-name">Eye Aspect Ratio</span>
+          <span class="metric-abbr">EAR</span>
+        </div>
+        <div class="metric-value-big" id="earVal">—</div>
+      </div>
+      <div class="metric-bar-wrap"><div class="metric-bar mc-blue-bar" id="earBar" style="width:0%"></div></div>
+      <div class="metric-status" id="earStatus">Waiting…</div>
+    </div>
+
+    <!-- MAR -->
+    <div class="metric-card" id="mcMAR">
+      <div class="metric-top">
+        <div class="metric-icon mc-purple">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M8 3C8 3 6 5 6 8C6 11 8 13 12 13C16 13 18 11 18 8C18 5 16 3 16 3"/><path d="M6 8C4 9 3 11 3 13C3 18 7 21 12 21C17 21 21 18 21 13C21 11 20 9 18 8"/></svg>
+        </div>
+        <div class="metric-info">
+          <span class="metric-name">Mouth Aspect Ratio</span>
+          <span class="metric-abbr">MAR</span>
+        </div>
+        <div class="metric-value-big" id="marVal">—</div>
+      </div>
+      <div class="metric-bar-wrap"><div class="metric-bar mc-purple-bar" id="marBar" style="width:0%"></div></div>
+      <div class="metric-status" id="marStatus">Waiting…</div>
+    </div>
+
+    <!-- GAZE -->
+    <div class="metric-card" id="mcGaze">
+      <div class="metric-top">
+        <div class="metric-icon mc-cyan">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        </div>
+        <div class="metric-info">
+          <span class="metric-name">Gaze Ratio</span>
+          <span class="metric-abbr">GAZE</span>
+        </div>
+        <div class="metric-value-big" id="gazeVal">—</div>
+      </div>
+      <div class="metric-bar-wrap"><div class="metric-bar mc-cyan-bar" id="gazeBar" style="width:0%"></div></div>
+      <div class="metric-status" id="gazeStatus">Waiting…</div>
+    </div>
+
+    <!-- HEAD POSE -->
+    <div class="metric-card metric-pose">
+      <div class="metric-top">
+        <div class="metric-icon mc-orange">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
+        </div>
+        <div class="metric-info">
+          <span class="metric-name">Head Pose</span>
+          <span class="metric-abbr">YPR</span>
+        </div>
+      </div>
+      <div class="pose-grid">
+        <div class="pose-item">
+          <span class="pose-axis axis-y">Y</span>
+          <span class="pose-label">Yaw</span>
+          <span class="pose-val" id="yawVal">—°</span>
+        </div>
+        <div class="pose-item">
+          <span class="pose-axis axis-p">P</span>
+          <span class="pose-label">Pitch</span>
+          <span class="pose-val" id="pitchVal">—°</span>
+        </div>
+        <div class="pose-item">
+          <span class="pose-axis axis-r">R</span>
+          <span class="pose-label">Roll</span>
+          <span class="pose-val" id="rollVal">—°</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- EYEBROW -->
+    <div class="metric-card" id="mcEB">
+      <div class="metric-top">
+        <div class="metric-icon mc-yellow">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 9 Q12 4 20 9"/></svg>
+        </div>
+        <div class="metric-info">
+          <span class="metric-name">Eyebrow Raise</span>
+          <span class="metric-abbr">EB RATIO</span>
+        </div>
+        <div class="metric-value-big" id="ebVal">—</div>
+      </div>
+      <div class="metric-bar-wrap"><div class="metric-bar mc-yellow-bar" id="ebBar" style="width:0%"></div></div>
+      <div class="metric-status" id="ebStatus">Waiting…</div>
+    </div>
+
+    <!-- MODEL INFO -->
+    <div class="model-info-card">
+      <div class="model-badge">LSTM</div>
+      <div class="model-details">
+        <div class="model-row"><span>Architecture</span><span>LSTM × 2 + Dense</span></div>
+        <div class="model-row"><span>Accuracy</span><span class="accent-green">97.06 %</span></div>
+        <div class="model-row"><span>Precision</span><span class="accent-green">99.12 %</span></div>
+        <div class="model-row"><span>Recall</span><span class="accent-green">91.80 %</span></div>
+        <div class="model-row"><span>Input window</span><span>30 frames</span></div>
+        <div class="model-row"><span>Features</span><span>7 (YPR, EAR, MAR, EB, GZ)</span></div>
+      </div>
+    </div>
+
+  </section>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

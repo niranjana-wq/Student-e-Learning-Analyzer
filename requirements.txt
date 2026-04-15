@@ -1,0 +1,9 @@
+opencv-python
+numpy
+mediapipe
+tensorflow
+joblib
+pandas
+scikit-learn
+Flask
+Flask-Cors
